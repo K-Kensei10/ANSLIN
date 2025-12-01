@@ -4,7 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:badges/badges.dart' as badges;
 import 'databasehelper.dart';
-import 'auto_connection.dart';
+import 'modules/auto_connection.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
 
@@ -14,32 +14,24 @@ import 'package:anslin/safety_check_meassage.dart';
 import 'package:anslin/goverment_message.dart';
 import 'package:anslin/host_auth.dart';
 import 'package:anslin/goverment_mode.dart';
-import 'package:anslin/widgets/bluetoothStatus.dart';
+import 'package:anslin/widgets/bluetooth_status.dart';
 
 int globalTimerDuration = 10;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Flutterの初期化を待つ
   final prefs = await SharedPreferences.getInstance();
-  final String? myPhoneNumber = prefs.getString(
-    'my_phone_number',
-  ); // 保存された電話番号を取得
+  final String? myPhoneNumber = prefs.getString('my_phone_number'); // 保存された電話番号を取得
   await AppData.loadInitialData(); //保存データを読み込む
   runApp(MyApp(myPhoneNumber: myPhoneNumber));
 }
 
-// アプリ全体で共有するデータ（シンプルな状態管理として利用）
+// アプリ全体で共有するデータ
 class AppData {
-  //ページデータに通知ベルのデータも付与
-  // 自治体からのお知らせ
-  static final ValueNotifier<List<Map<String, dynamic>>> officialAnnouncements =
-      ValueNotifier([]);
-  // 避難者から自治体へのメッセージ
-  static final ValueNotifier<List<Map<String, dynamic>>> receivedMessages =
-      ValueNotifier([]);
-  // 避難所SNSの投稿
-  static final ValueNotifier<List<Map<String, dynamic>>> snsPosts =
-      ValueNotifier([]);
+  //ページデータに通知データの
+  static final ValueNotifier<List<Map<String, dynamic>>> officialAnnouncements = ValueNotifier([]);
+  static final ValueNotifier<List<Map<String, dynamic>>> receivedMessages = ValueNotifier([]);
+  static final ValueNotifier<List<Map<String, dynamic>>> snsPosts = ValueNotifier([]);
 
   // 未読カウント用の数字
   static final ValueNotifier<int> unreadSnsCount = ValueNotifier(0);
@@ -48,13 +40,8 @@ class AppData {
 
   //各ページデータ、通知件数
   static Future<void> loadInitialData() async {
-    // 1. SNS (Type 1)
     await loadSnsPosts();
-
-    // 2. 安否確認 (Type 2)
     await loadSafetyCheckMessages();
-
-    // 3. 自治体連絡 (Type 4)
     await loadOfficialMessages();
 
     //カウント更新
@@ -251,7 +238,7 @@ class AppData {
   }
 }
 
-//テーマ調整
+//テーマ
 class MyApp extends StatelessWidget {
   final String? myPhoneNumber;
   const MyApp({super.key, this.myPhoneNumber});
@@ -267,7 +254,7 @@ class MyApp extends StatelessWidget {
         fontFamily: 'Noto Sans JP',
         useMaterial3: true,
       ),
-      home: BluetoothStateBanner(
+      home: BluetoothStateModal(
         child:hasPhoneNumber
           ? const MainPage() // hasPhoneNumber=true -> メインページ
           : const PhoneInputPage(), // hasPhoneNumber=false -> 電話番号入力ページ
@@ -466,6 +453,7 @@ void _checkAndRequestPermissions() async {
   }
 }
 
+//接続されたデバイス数取得
 int connectedDeviceCount() {
   return 3;
 }

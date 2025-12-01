@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:anslin/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:anslin/snack_bar.dart';
+import 'package:anslin/modules/snack_bar.dart';
 import 'package:anslin/main.dart';
 import 'databasehelper.dart';
 import 'package:intl/intl.dart';
