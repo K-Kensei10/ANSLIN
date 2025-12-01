@@ -1,4 +1,4 @@
-package com.example.anslin
+package com.anslin.app
 
 import android.Manifest
 import android.app.Activity
@@ -33,7 +33,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.*
-import com.example.anslin.ISSCANNING
+import com.anslin.app.ISSCANNING
 
 val CONNECT_UUID = UUID.fromString("86411acb-96e9-45a1-90f2-e392533ef877")
 val READ_CHARACTERISTIC_UUID = UUID.fromString("a3f9c1d2-96e9-45a1-90f2-e392533ef877")
