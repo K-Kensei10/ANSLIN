@@ -35,14 +35,14 @@ import java.time.format.DateTimeFormatter
 import java.util.*
 import com.anslin.app.ISSCANNING
 
-val CONNECT_UUID = UUID.fromString("86411acb-96e9-45a1-90f2-e392533ef877")
-val READ_CHARACTERISTIC_UUID = UUID.fromString("a3f9c1d2-96e9-45a1-90f2-e392533ef877")
-val WRITE_CHARACTERISTIC_UUID = UUID.fromString("7e4b8a90-96e9-45a1-90f2-e392533ef877")
-val NOTIFY_CHARACTERISTIC_UUID = UUID.fromString("1d2e3f4a-96e9-45a1-90f2-e392533ef877")
+val SERVICE_UUID = UUID.fromString(Constants.SERVICE_UUID)
+val READ_CHARACTERISTIC_UUID = UUID.fromString(Constants.READ_CHARACTERISTIC_UUID)
+val WRITE_CHARACTERISTIC_UUID = UUID.fromString(Constants.WRITE_CHARACTERISTIC_UUID)
+val NOTIFY_CHARACTERISTIC_UUID = UUID.fromString(Constants.NOTIFY_CHARACTERISTIC_UUID)
 
 var ISSCANNING = false
 var ISADVERTISING = false
-val RSSI = -90
+val RSSI = Constants.RSSI
 
 // Flutter
 class MainActivity : FlutterActivity() {
@@ -546,7 +546,7 @@ class BluetoothLeController(public val activity: Activity) {
                 ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build()
         val scanFilterList = arrayListOf<ScanFilter>()
         val scanUuidFilter: ScanFilter =
-                ScanFilter.Builder().setServiceUuid(ParcelUuid(CONNECT_UUID)).build()
+                ScanFilter.Builder().setServiceUuid(ParcelUuid(SERVICE_UUID)).build()
         scanFilterList.add(scanUuidFilter)
 
         // コールバック
@@ -561,7 +561,7 @@ class BluetoothLeController(public val activity: Activity) {
                                         }
                         ) {
                             val uuids = result.scanRecord?.serviceUuids
-                            if (uuids?.contains(ParcelUuid(CONNECT_UUID)) == true) {
+                            if (uuids?.contains(ParcelUuid(SERVICE_UUID)) == true) {
                                 Log.d("Scan", "$result")
                             }
                             scanResults.add(result)
@@ -687,7 +687,7 @@ class BluetoothLeController(public val activity: Activity) {
             mBluetoothGattServer = bluetoothManager.openGattServer(context, mGattServerCallback)
             // Gattサービスの取得
             var BluetoothGattService =
-                    BluetoothGattService(CONNECT_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
+                    BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
 
             // キャラクタリスティック
             writeCharacteristic =
@@ -727,7 +727,7 @@ class BluetoothLeController(public val activity: Activity) {
             val advertiseData =
                     AdvertiseData.Builder()
                             .setIncludeDeviceName(true)
-                            .addServiceUuid(ParcelUuid(CONNECT_UUID))
+                            .addServiceUuid(ParcelUuid(SERVICE_UUID))
                             .build()
 
             // コールバック
@@ -847,9 +847,9 @@ class BluetoothLeController(public val activity: Activity) {
                     gatt ?: return
                     Log.d("Gatt", "サービス検出 gatt: $gatt, status: $status")
                     // 対象のサービスの取得
-                    val service: BluetoothGattService? = gatt.getService(CONNECT_UUID)
+                    val service: BluetoothGattService? = gatt.getService(SERVICE_UUID)
                     if (service == null) {
-                        Log.e("GATT", "指定されたサービスが見つかりません: $CONNECT_UUID")
+                        Log.e("GATT", "指定されたサービスが見つかりません: $SERVICE_UUID")
                         ISSCANNING = false
                         return
                     }
