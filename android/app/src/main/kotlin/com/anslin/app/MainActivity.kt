@@ -15,13 +15,11 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.*
 import android.content.Context
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.annotation.NonNull
-import androidx.core.content.ContextCompat
 import androidx.core.os.postDelayed
 import android.content.BroadcastReceiver
 import android.content.Intent
@@ -33,7 +31,6 @@ import io.flutter.plugin.common.MethodChannel
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.*
-import com.anslin.app.ISSCANNING
 
 val SERVICE_UUID = UUID.fromString(Constants.SERVICE_UUID)
 val READ_CHARACTERISTIC_UUID = UUID.fromString(Constants.READ_CHARACTERISTIC_UUID)
@@ -472,70 +469,68 @@ class BluetoothLeController(public val activity: Activity) {
         scanResultCallback = onResult
 
         // 権限チェック
-        checkPermissions(context) { PermissionResult ->
-            if (PermissionResult != null) {
-                Log.d("Scan", "通信に必要な権限がありません。設定から許可してください。")
-                ISSCANNING = false
-                return@checkPermissions
-            }
-            // BluetoothがOnになっているか
-            if (adapter?.isEnabled != true) {
-                Log.d("Scan", "BluetoothがOFFになっています。設定からONにしてください。")
-                ISSCANNING = false
-                return@checkPermissions
-            }
-            // スキャン結果リセット
-            scanResults.clear()
-            // スキャン結果
-            if (!_isScanning) {
-                handler.postDelayed(
-                        {
-                            try {
-                                scanner?.stopScan(mScanCallback)
-                                _isScanning = false
-                                Log.d("Scan", "スキャンストップ")
-                                if (scanResults.isEmpty()) {
-                                    scanResults.clear()
-                                    Log.d("Scan", "検出されたデバイスはありません")
-                                    ISSCANNING = false
-                                    scanResultCallback?.invoke(mapOf("status" to "SCAN_FAILED", "message" to "付近にデバイスが見つかりませんでした。"))
-                                } else {
-                                    val bestDevice = scanResults.maxByOrNull { it.rssi }
-                                    bestDevice?.let { result ->
-                                        val name = result.scanRecord?.deviceName ?: result.device.name ?: "Unknown"
-                                        val address = result.device.address
-                                        val rssi = result.rssi
-                                        Log.d("Scan", "接続対象: $name, アドレス: $address, RSSI: $rssi")
-                                        try {
-                                            cleanupGatt(bluetoothGatt)
-                                            Handler(Looper.getMainLooper()).postDelayed({
-                                                connect(address)
-                                            }, 200)
-                                        } catch (e: Exception) {
-                                            Log.d("Gatt", "通信開始失敗: ${e.message}")
-                                            ISSCANNING = false
-                                            scanResultCallback?.invoke(
-                                                mapOf("status" to "SCAN_FAILED", "message" to "接続可能なデバイスが見つかりませんでした。")
-                                            )
-                                        }
+        if (!checkPermissions(context)) {
+            Log.d("Scan", "通信に必要な権限がありません。設定から許可してください。")
+            ISSCANNING = false
+            return
+        }
+        // BluetoothがOnになっているか
+        if (adapter?.isEnabled != true) {
+            Log.d("Scan", "BluetoothがOFFになっています。設定からONにしてください。")
+            ISSCANNING = false
+            return
+        }
+        // スキャン結果リセット
+        scanResults.clear()
+        // スキャン結果
+        if (!_isScanning) {
+            handler.postDelayed(
+                    {
+                        try {
+                            scanner?.stopScan(mScanCallback)
+                            _isScanning = false
+                            Log.d("Scan", "スキャンストップ")
+                            if (scanResults.isEmpty()) {
+                                scanResults.clear()
+                                Log.d("Scan", "検出されたデバイスはありません")
+                                ISSCANNING = false
+                                scanResultCallback?.invoke(mapOf("status" to "SCAN_FAILED", "message" to "付近にデバイスが見つかりませんでした。"))
+                            } else {
+                                val bestDevice = scanResults.maxByOrNull { it.rssi }
+                                bestDevice?.let { result ->
+                                    val name = result.scanRecord?.deviceName ?: result.device.name ?: "Unknown"
+                                    val address = result.device.address
+                                    val rssi = result.rssi
+                                    Log.d("Scan", "接続対象: $name, アドレス: $address, RSSI: $rssi")
+                                    try {
+                                        cleanupGatt(bluetoothGatt)
+                                        Handler(Looper.getMainLooper()).postDelayed({
+                                            connect(address)
+                                        }, 200)
+                                    } catch (e: Exception) {
+                                        Log.d("Gatt", "通信開始失敗: ${e.message}")
+                                        ISSCANNING = false
+                                        scanResultCallback?.invoke(
+                                            mapOf("status" to "SCAN_FAILED", "message" to "接続可能なデバイスが見つかりませんでした。")
+                                        )
                                     }
                                 }
-                            } catch (e: Exception) {
-                                Log.e("Scan", "スキャン停止時に例外: ${e.message}")
-                                scanner?.stopScan(mScanCallback)
-                                _isScanning = false
-                                ISSCANNING = false
                             }
-                        },
-                        SCAN_PERIOD
-                )
-                startBleScan()
-            } else {
-                scanResultCallback?.invoke(
-                    mapOf("status" to "SCAN_FAILED", "message" to "スキャンに失敗しました")
-                )
-                ISSCANNING = false
-            }
+                        } catch (e: Exception) {
+                            Log.e("Scan", "スキャン停止時に例外: ${e.message}")
+                            scanner?.stopScan(mScanCallback)
+                            _isScanning = false
+                            ISSCANNING = false
+                        }
+                    },
+                    SCAN_PERIOD
+            )
+            startBleScan()
+        } else {
+            scanResultCallback?.invoke(
+                mapOf("status" to "SCAN_FAILED", "message" to "スキャンに失敗しました")
+            )
+            ISSCANNING = false
         }
     }
 
@@ -897,28 +892,3 @@ class BluetoothLeController(public val activity: Activity) {
             }
 }
 
-// ================= パーミッション確認 =================
-fun checkPermissions(context: Context, onResult: (String?) -> Unit) {
-    val requiredPermissions =
-            listOf(
-                    Manifest.permission.BLUETOOTH,
-                    Manifest.permission.BLUETOOTH_ADVERTISE,
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.BLUETOOTH_SCAN,
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.POST_NOTIFICATIONS
-            )
-
-    val missing =
-            requiredPermissions.filter {
-                ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-            }
-
-    if (missing.isEmpty()) {
-        onResult(null)
-        return
-    } else {
-        val message = "Missing permissions: ${missing.joinToString(", ")}"
-        onResult(message)
-    }
-}
