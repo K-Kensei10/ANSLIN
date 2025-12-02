@@ -155,230 +155,10 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, BLUETOOTH_STATE_CHANNEL).setStreamHandler(
-            object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
-                    println("[EventChannel] Bluetooth状態の監視を開始します。")
-
-                    bluetoothStateReceiver = createBluetoothStateReceiver(events) //OSからの通知を受け取る
-                    
-                    val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)// OSからbluetoothの状態変化を受け取る
-                    registerReceiver(bluetoothStateReceiver, filter)
-                    
-                    val adapter = (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter//アプリ起動時の状態
-                    events.success(adapter?.isEnabled ?: false)
-                }
-                override fun onCancel(arguments: Any?) {
-                    println("[EventChannel] Bluetooth状態の監視を停止します。")
-                    if (bluetoothStateReceiver != null) {
-                        unregisterReceiver(bluetoothStateReceiver) // OSへの登録を解除
-                        bluetoothStateReceiver = null
-                    }
-                }
-            }
-        )
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, BLUETOOTH_STATE_CHANNEL)
+            .setStreamHandler(BluetoothStateStreamHandler(this))
         MessageBridge.registerActivityHandler { receivedData ->
             runOnUiThread() { messageSeparate(receivedData) }
-        }
-    }
-
-    
-    private fun createBluetoothStateReceiver(events: EventChannel.EventSink): BroadcastReceiver {
-        return object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
-                    val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
-                    
-                    when (state) {
-                        BluetoothAdapter.STATE_OFF -> {
-                            println("bluetoothがOFFになりました。")
-                            events.success(false) //
-                        }
-                        BluetoothAdapter.STATE_ON -> {
-                            println("bluetoothがONになりました。")
-                            events.success(true) // Flutterに true を送信
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fun messageSeparate(receivedString: String) {
-        println("▶データ処理を開始します...")
-        try {
-            // message;to_phone_number;message_type;from_phone_number;TTL;TimeStamp
-            val SeparatedString: List<String> = receivedString.trim().split(";")
-            if (SeparatedString.size != 6 && SeparatedString.size != 7) {
-                println("メッセージの形式が無効です。")
-                return
-            }
-            val message = SeparatedString[0]
-            val toPhoneNumber = SeparatedString[1]
-            val messageType = SeparatedString[2]
-            val fromPhoneNumber = SeparatedString[3]
-            val TTL = SeparatedString[4].toInt()
-            val timestampString = SeparatedString[5]
-            var coordinatesToDart: String? = null
-            if (SeparatedString.size == 7) {
-                // 位置情報あり (7個)
-                coordinatesToDart = SeparatedString[6]
-                println(" [受信] 位置情報あり ")
-            } else if (SeparatedString.size == 6) {
-                // 位置情報なし (6個)
-                coordinatesToDart = null
-                println(" [受信] 位置情報なし ")
-            }
-            val dataForFlutter =
-                    listOf(
-                            message,
-                            messageType,
-                            fromPhoneNumber,
-                            timestampString,
-                            coordinatesToDart
-                    )
-            val prefs =
-                    context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val myPhoneNumber = prefs.getString("flutter.my_phone_number", null)
-            var isMessenger: Boolean = false
-
-            fun displayMessageOnFlutter(datalist: List<String?>) {
-                runOnUiThread() {
-                    if (::channel.isInitialized) {
-                        channel.invokeMethod("displayMessage", datalist)
-                    } else {
-                        println("MethodChannelが初期化されていません。")
-                    }
-                }
-            }
-
-            fun relayMessage(
-                    message: String,
-                    toPhoneNumber: String,
-                    messageType: String,
-                    fromPhoneNumber: String,
-                    TTL: Int,
-                    timestampString: String,
-                    coordinatesToDart: String?
-            ) {
-                val newTTL = (TTL - 1).toString()
-                val relayData =
-                        when (coordinatesToDart) {
-                            null ->
-                                    listOf(
-                                                    message,
-                                                    toPhoneNumber,
-                                                    messageType,
-                                                    fromPhoneNumber,
-                                                    newTTL,
-                                                    timestampString
-                                            )
-                                            .joinToString(";")
-                            else ->
-                                    listOf(
-                                                    message,
-                                                    toPhoneNumber,
-                                                    messageType,
-                                                    fromPhoneNumber,
-                                                    newTTL,
-                                                    timestampString,
-                                                    coordinatesToDart
-                                            )
-                                            .joinToString(";")
-                        }
-                runOnUiThread() {
-                    if (::channel.isInitialized) {
-                        // dart側の 'saveRelayMessage' メソッドを呼び出す
-                        channel.invokeMethod("saveRelayMessage", relayData)
-                    } else {
-                        println("MethodChannelが初期化されていません。")
-                    }
-                }
-            }
-
-            when (messageType) {
-                "1" -> { // SNS
-                    Log.d("get_message", " [処理]Type 1 (SNS)を受信")
-                    displayMessageOnFlutter(dataForFlutter) // Flutter側に表示を依頼
-
-                    if (TTL > 0) {
-                        Log.d("get_message", " [処理]Type 1 メッセージを転送")
-                        relayMessage(
-                                message,
-                                toPhoneNumber,
-                                messageType,
-                                fromPhoneNumber,
-                                TTL,
-                                timestampString,
-                                coordinatesToDart
-                        )
-                    } else {
-                        return
-                    }
-                }
-                "2" -> { // 長距離通信、安否確認
-                    if (toPhoneNumber == myPhoneNumber) {
-                        Log.d("get_message", " [処理]Type 2 (自分宛)を受信")
-                        displayMessageOnFlutter(dataForFlutter) // Flutter側に表示を依頼
-                    } else {
-                        if (TTL > 0) {
-                            Log.d("get_message", " [処理]Type 2 メッセージを転送")
-                            relayMessage(
-                                    message,
-                                    toPhoneNumber,
-                                    messageType,
-                                    fromPhoneNumber,
-                                    TTL,
-                                    timestampString,
-                                    coordinatesToDart
-                            )
-                        } else {
-                            return
-                        }
-                    }
-                }
-                "3" -> { // 自治体への連絡
-                    if (isMessenger) {
-                        // メッセージを保存する人のアルゴリズム->メッセージを一時保存
-                    }
-                    if (TTL > 0) {
-                        Log.d("get_message", " [処理]Type 3 メッセージを転送")
-                        relayMessage(
-                                message,
-                                toPhoneNumber,
-                                messageType,
-                                fromPhoneNumber,
-                                TTL,
-                                timestampString,
-                                coordinatesToDart
-                        )
-                    } else {
-                        return
-                    }
-                }
-                "4" -> { // 自治体からの連絡
-                    Log.d("get_message", " [処理]Type 4 (自治体)を受信")
-                    displayMessageOnFlutter(dataForFlutter) // Flutter側に表示を依頼
-
-                    if (TTL > 0) {
-                        Log.d("get_message", " [処理]Type 4 メッセージを転送")
-                        relayMessage(
-                                message,
-                                toPhoneNumber,
-                                messageType,
-                                fromPhoneNumber,
-                                TTL,
-                                timestampString,
-                                coordinatesToDart
-                        )
-                    } else {
-                        return
-                    }
-                }
-                else -> println(" [不明] メッセージタイプです。内容: $message")
-            }
-        } catch (e: Exception) {
-            Log.d("ERROR", "エラー: $e")
         }
     }
 }
@@ -605,177 +385,175 @@ class BluetoothLeController(public val activity: Activity) {
             ISADVERTISING = false
             return
         }
-        checkPermissions(context) { result ->
-            if (result != null) {
-                Log.d("Advertise", "通信に必要な権限がありません。設定から許可してください。")
-                safeResult(mapOf("status" to "ADVERTISE_FAILED","message" to "通信に必要な権限がありません。設定から許可してください。"))
-                ISADVERTISING = false
-                return@checkPermissions
-            }
-            // BluetoothがOnになっているか
-            if (adapter?.isEnabled != true) {
-                Log.d("Advertise", "BluetoothがOFFになっています。設定からONにしてください。")
-                safeResult(mapOf("status" to "ADVERTISE_FAILED","message" to "BluetoothがOFFになっています。設定からONにしてください。"))
-                ISADVERTISING = false
-                return@checkPermissions
-            }
-            Log.d("Advertise", "$messageData")
-            // セントラル側が切断した後の処理
-            val mGattServerCallback =
-                    object : BluetoothGattServerCallback() {
-                        override fun onConnectionStateChange(
-                                device: BluetoothDevice?,
-                                status: Int,
-                                newState: Int
-                        ) {
-                            if (status != BluetoothGatt.GATT_SUCCESS) {
-                                Log.e("Gatt", "接続失敗 status: $status")
-                                safeResult(
-                                    mapOf(
-                                        "status" to "ADVERTISE_FAILED",
-                                        "message" to "通信に失敗しました。"
-                                    )
+        if (!checkPermissions(context)) {
+            Log.d("Advertise", "通信に必要な権限がありません。設定から許可してください。")
+            safeResult(mapOf("status" to "ADVERTISE_FAILED","message" to "通信に必要な権限がありません。設定から許可してください。"))
+            ISADVERTISING = false
+            return
+        }
+        // BluetoothがOnになっているか
+        if (adapter?.isEnabled != true) {
+            Log.d("Advertise", "BluetoothがOFFになっています。設定からONにしてください。")
+            safeResult(mapOf("status" to "ADVERTISE_FAILED","message" to "BluetoothがOFFになっています。設定からONにしてください。"))
+            ISADVERTISING = false
+            return
+        }
+        Log.d("Advertise", "$messageData")
+        // セントラル側が切断した後の処理
+        val mGattServerCallback =
+                object : BluetoothGattServerCallback() {
+                    override fun onConnectionStateChange(
+                            device: BluetoothDevice?,
+                            status: Int,
+                            newState: Int
+                    ) {
+                        if (status != BluetoothGatt.GATT_SUCCESS) {
+                            Log.e("Gatt", "接続失敗 status: $status")
+                            safeResult(
+                                mapOf(
+                                    "status" to "ADVERTISE_FAILED",
+                                    "message" to "通信に失敗しました。"
                                 )
-                                mBluetoothGattServer.clearServices()
-                                mBluetoothGattServer.close()
-                                ISSCANNING = false
-                                return
-                            }                        
-                            if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                                Log.d("GATT", "セントラルが切断しました")
-                                ISADVERTISING = false
-                                // 変数初期化
-                                readCharacteristic = null
-                                writeCharacteristic = null
-                                notifyCharacteristic = null
-                                mBluetoothGattServer.clearServices()
-                                mBluetoothGattServer.close()
-                                safeResult(mapOf("status" to "SEND_MESSAGE_SUCCESSFUL"))
-                            } else if (newState == BluetoothProfile.STATE_CONNECTED) {
-                                Log.d("GATT", "セントラルと交信しています")
-                                advertiser.stopAdvertising(mAdvertiseCallback)
-                                isConnected = true
-                            }
-                        }
-
-                        override fun onCharacteristicReadRequest(
-                                device: BluetoothDevice,
-                                requestId: Int,
-                                offset: Int,
-                                characteristic: BluetoothGattCharacteristic
-                        ) {
-                            val value = characteristic.value ?: byteArrayOf()
-                            val responseValue =
-                                    if (offset < value.size) value.copyOfRange(offset, value.size)
-                                    else byteArrayOf()
-                            mBluetoothGattServer.sendResponse(
-                                    device,
-                                    requestId,
-                                    BluetoothGatt.GATT_SUCCESS,
-                                    offset,
-                                    responseValue
                             )
+                            mBluetoothGattServer.clearServices()
+                            mBluetoothGattServer.close()
+                            ISSCANNING = false
+                            return
+                        }                        
+                        if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                            Log.d("GATT", "セントラルが切断しました")
+                            ISADVERTISING = false
+                            // 変数初期化
+                            readCharacteristic = null
+                            writeCharacteristic = null
+                            notifyCharacteristic = null
+                            mBluetoothGattServer.clearServices()
+                            mBluetoothGattServer.close()
+                            safeResult(mapOf("status" to "SEND_MESSAGE_SUCCESSFUL"))
+                        } else if (newState == BluetoothProfile.STATE_CONNECTED) {
+                            Log.d("GATT", "セントラルと交信しています")
+                            advertiser.stopAdvertising(mAdvertiseCallback)
+                            isConnected = true
                         }
                     }
 
-            // Gatt通信用
-            mBluetoothGattServer = bluetoothManager.openGattServer(context, mGattServerCallback)
-            // Gattサービスの取得
-            var BluetoothGattService =
-                    BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
+                    override fun onCharacteristicReadRequest(
+                            device: BluetoothDevice,
+                            requestId: Int,
+                            offset: Int,
+                            characteristic: BluetoothGattCharacteristic
+                    ) {
+                        val value = characteristic.value ?: byteArrayOf()
+                        val responseValue =
+                                if (offset < value.size) value.copyOfRange(offset, value.size)
+                                else byteArrayOf()
+                        mBluetoothGattServer.sendResponse(
+                                device,
+                                requestId,
+                                BluetoothGatt.GATT_SUCCESS,
+                                offset,
+                                responseValue
+                        )
+                    }
+                }
 
-            // キャラクタリスティック
-            writeCharacteristic =
-                    BluetoothGattCharacteristic(
-                            WRITE_CHARACTERISTIC_UUID,
-                            BluetoothGattCharacteristic.PROPERTY_WRITE,
-                            BluetoothGattCharacteristic.PERMISSION_WRITE
-                    )
-            readCharacteristic =
-                    BluetoothGattCharacteristic(
-                            READ_CHARACTERISTIC_UUID,
-                            BluetoothGattCharacteristic.PROPERTY_READ,
-                            BluetoothGattCharacteristic.PERMISSION_READ
-                    )
+        // Gatt通信用
+        mBluetoothGattServer = bluetoothManager.openGattServer(context, mGattServerCallback)
+        // Gattサービスの取得
+        var BluetoothGattService =
+                BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
 
-            // メッセージデータの書き込み
-            // message, to_phone_number, message_type, from_phone_number, TTL
-            readCharacteristic?.let { readChar ->
-                readChar.value = messageData.toByteArray(Charsets.UTF_8)
-            }
+        // キャラクタリスティック
+        writeCharacteristic =
+                BluetoothGattCharacteristic(
+                        WRITE_CHARACTERISTIC_UUID,
+                        BluetoothGattCharacteristic.PROPERTY_WRITE,
+                        BluetoothGattCharacteristic.PERMISSION_WRITE
+                )
+        readCharacteristic =
+                BluetoothGattCharacteristic(
+                        READ_CHARACTERISTIC_UUID,
+                        BluetoothGattCharacteristic.PROPERTY_READ,
+                        BluetoothGattCharacteristic.PERMISSION_READ
+                )
 
-            // サービスに追加
-            BluetoothGattService.addCharacteristic(readCharacteristic)
-            BluetoothGattService.addCharacteristic(writeCharacteristic)
+        // メッセージデータの書き込み
+        // message, to_phone_number, message_type, from_phone_number, TTL
+        readCharacteristic?.let { readChar ->
+            readChar.value = messageData.toByteArray(Charsets.UTF_8)
+        }
 
-            // Gattキャラクタリスティックの追加
-            mBluetoothGattServer.addService(BluetoothGattService)
+        // サービスに追加
+        BluetoothGattService.addCharacteristic(readCharacteristic)
+        BluetoothGattService.addCharacteristic(writeCharacteristic)
 
-            // アドバタイズ設定
-            val advertiseSetting =
-                    AdvertiseSettings.Builder()
-                            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
-                            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
-                            .setConnectable(true)
-                            .build()
+        // Gattキャラクタリスティックの追加
+        mBluetoothGattServer.addService(BluetoothGattService)
 
-            val advertiseData =
-                    AdvertiseData.Builder()
-                            .setIncludeDeviceName(true)
-                            .addServiceUuid(ParcelUuid(SERVICE_UUID))
-                            .build()
+        // アドバタイズ設定
+        val advertiseSetting =
+                AdvertiseSettings.Builder()
+                        .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
+                        .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
+                        .setConnectable(true)
+                        .build()
 
-            // コールバック
-            mAdvertiseCallback =
-                    object : AdvertiseCallback() {
-                        override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-                            handler.postDelayed(
-                                    {
-                                        if (isConnected) {
-                                            Log.d("Advertise", "接続済みなのでアドバタイズ停止のみ")
-                                            advertiser.stopAdvertising(mAdvertiseCallback)
-                                            ISADVERTISING = false
-                                            return@postDelayed
-                                        }
-                                        Log.e("Advertise", "接続が確立されませんでした")
+        val advertiseData =
+                AdvertiseData.Builder()
+                        .setIncludeDeviceName(true)
+                        .addServiceUuid(ParcelUuid(SERVICE_UUID))
+                        .build()
+
+        // コールバック
+        mAdvertiseCallback =
+                object : AdvertiseCallback() {
+                    override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
+                        handler.postDelayed(
+                                {
+                                    if (isConnected) {
+                                        Log.d("Advertise", "接続済みなのでアドバタイズ停止のみ")
                                         advertiser.stopAdvertising(mAdvertiseCallback)
                                         ISADVERTISING = false
-                                        mBluetoothGattServer.clearServices()
-                                        mBluetoothGattServer.close()
-                                        safeResult(mapOf(
-                                            "status" to "ADVERTISE_FAILED",
-                                            "message" to "一定時間内に接続が確立されませんでした。再試行してください。"
-                                        ))                                
-                                    },
-                                    ADVERTISE_PERIOD
-                            )
-                        }
-
-                        override fun onStartFailure(errorCode: Int) {
-                            Log.e("Advertise", "アドバタイズ失敗: $errorCode")
-                            advertiser.stopAdvertising(mAdvertiseCallback)
-                            ISADVERTISING = false
-                            safeResult(
-                                    mapOf(
-                                            "status" to "ADVERTISE_FAILED",
-                                            "message" to
-                                                    "通信の開始に失敗しました。もう一度お試しください。（コード: $errorCode）"
-                                    )
-                            )
-                        }
-                    }
-            advertiser.stopAdvertising(mAdvertiseCallback)
-            handler.postDelayed(
-                    {
-                        advertiser.startAdvertising(
-                                advertiseSetting,
-                                advertiseData,
-                                mAdvertiseCallback
+                                        return@postDelayed
+                                    }
+                                    Log.e("Advertise", "接続が確立されませんでした")
+                                    advertiser.stopAdvertising(mAdvertiseCallback)
+                                    ISADVERTISING = false
+                                    mBluetoothGattServer.clearServices()
+                                    mBluetoothGattServer.close()
+                                    safeResult(mapOf(
+                                        "status" to "ADVERTISE_FAILED",
+                                        "message" to "一定時間内に接続が確立されませんでした。再試行してください。"
+                                    ))                                
+                                },
+                                ADVERTISE_PERIOD
                         )
-                    },
-                    300
-            )
-        }
+                    }
+
+                    override fun onStartFailure(errorCode: Int) {
+                        Log.e("Advertise", "アドバタイズ失敗: $errorCode")
+                        advertiser.stopAdvertising(mAdvertiseCallback)
+                        ISADVERTISING = false
+                        safeResult(
+                                mapOf(
+                                        "status" to "ADVERTISE_FAILED",
+                                        "message" to
+                                                "通信の開始に失敗しました。もう一度お試しください。（コード: $errorCode）"
+                                )
+                        )
+                    }
+                }
+        advertiser.stopAdvertising(mAdvertiseCallback)
+        handler.postDelayed(
+                {
+                    advertiser.startAdvertising(
+                            advertiseSetting,
+                            advertiseData,
+                            mAdvertiseCallback
+                    )
+                },
+                300
+        )
     }
 
     // ================= GATT通信 =================
