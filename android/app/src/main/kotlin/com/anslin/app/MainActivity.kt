@@ -28,8 +28,6 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.*
 
 val SERVICE_UUID = UUID.fromString(Constants.SERVICE_UUID)
@@ -182,35 +180,6 @@ object MessageBridge {
     }
 }
 
-// メッセージのフォーマットを作成
-fun CreateMessageFormat(
-        message: String,
-        phoneNum: String,
-        messageType: String,
-        toPhoneNumber: String,
-        TTL: String,
-        coordinates: String
-): String {
-    // message; to_phone_number; message_type; from_phone_number; TTL; coordinates
-    val messageTypeCode: String =
-            when (messageType) {
-                "SNS" -> "1"
-                "SafetyCheck" -> "2"
-                "ToLocalGovernment" -> "3"
-                "FromLocalGovernment" -> "4"
-                else -> "0"
-            }
-    val currentDateTime = LocalDateTime.now()
-    val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
-    val TimeStamp = currentDateTime.format(formatter)
-    if (coordinates == "") {
-        return listOf(message, toPhoneNumber, messageTypeCode, phoneNum, TTL, TimeStamp)
-                .joinToString(";")
-    }
-    return listOf(message, toPhoneNumber, messageTypeCode, phoneNum, TTL, TimeStamp, coordinates)
-            .joinToString(";")
-}
-
 // BLE class
 class BluetoothLeController(public val activity: Activity) {
     private val bluetoothManager =
@@ -249,7 +218,7 @@ class BluetoothLeController(public val activity: Activity) {
         scanResultCallback = onResult
 
         // 権限チェック
-        if (!checkPermissions(context)) {
+        if (!PermissionUtils.check(context)) {
             Log.d("Scan", "通信に必要な権限がありません。設定から許可してください。")
             ISSCANNING = false
             return
@@ -385,7 +354,7 @@ class BluetoothLeController(public val activity: Activity) {
             ISADVERTISING = false
             return
         }
-        if (!checkPermissions(context)) {
+        if (!PermissionUtils.check(context)) {
             Log.d("Advertise", "通信に必要な権限がありません。設定から許可してください。")
             safeResult(mapOf("status" to "ADVERTISE_FAILED","message" to "通信に必要な権限がありません。設定から許可してください。"))
             ISADVERTISING = false
