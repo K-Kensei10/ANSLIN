@@ -29,6 +29,8 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.*
+import com.anslin.app.MessageFormatFactor
+import com.anslin.app.
 
 val SERVICE_UUID = UUID.fromString(Constants.SERVICE_UUID)
 val READ_CHARACTERISTIC_UUID = UUID.fromString(Constants.READ_CHARACTERISTIC_UUID)
@@ -78,28 +80,13 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "startSendMessage" -> {
-                    prefs =
-                            context.getSharedPreferences(
-                                    "FlutterSharedPreferences",
-                                    Context.MODE_PRIVATE
-                            )
-                    val myPhoneNumber = prefs.getString("flutter.my_phone_number", null)
-                    val message = call.argument<String>("message") ?: ""
-                    val phoneNum = myPhoneNumber ?: "00000000000"
-                    val messageType = call.argument<String>("messageType") ?: ""
-                    val toPhoneNumber = call.argument<String>("toPhoneNumber") ?: ""
-                    val coordinates = call.argument<String>("coordinates") ?: ""
-                    val TTL = "150"
-
-                    val messageData =
-                            CreateMessageFormat(
-                                    message,
-                                    phoneNum,
-                                    messageType,
-                                    toPhoneNumber,
-                                    TTL,
-                                    coordinates
-                            )
+                    val messageData = 
+                        MessageFormatFactor(context).buildOriginMessage(
+                            call.argument<String>("message") ?: "",
+                            call.argument<String>("messageType") ?: "",
+                            toPhoneNumber = call.argument<String>("toPhoneNumber") ?: "", 
+                            call.argument<String>("coordinates")
+                        )
                     Log.d("Advertise", "$messageData")
                     if (!ISADVERTISING) {
                         ISADVERTISING = true
@@ -156,7 +143,7 @@ class MainActivity : FlutterActivity() {
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, BLUETOOTH_STATE_CHANNEL)
             .setStreamHandler(BluetoothStateStreamHandler(this))
         MessageBridge.registerActivityHandler { receivedData ->
-            runOnUiThread() { messageSeparate(receivedData) }
+            runOnUiThread() { MessageParser.messageParse(receivedData) }
         }
     }
 }

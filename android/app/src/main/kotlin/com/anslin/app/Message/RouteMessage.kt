@@ -1,58 +1,17 @@
 package com.anslin.app
 
 import android.content.Context
-import com.anslin.app.RelayedMessageBuilder
+import com.anslin.app.MessageFormatFactor
 
-// TEST
+// TEST -> 自治体管理と長距離通信者のアルゴリズム実装予定
 val isMessenger: Boolean = false
 val isGoverment: Boolean = false
-
-
-
-// リレーフォーマット
-object RelayedMessageBuilder {
-    fun create(parsedMessageData: ParsedMessage): String {
-        val newTTL = (parsedMessageData.ttl - 1).toString()
-        return listOfNotNull(
-            parsedMessageData.message,
-            parsedMessageData.toPhoneNumber,
-            parsedMessageData.messageType,
-            parsedMessageData.fromPhoneNumber,
-            newTTL,
-            parsedMessageData.timestamp,
-            parsedMessageData.coordinates
-        ).joinToString(";")
-    }
-}
-
-// 保存フォーマット
-private data class FormatSaveData(
-    val message: String,
-    val messageType: String,
-    val fromPhoneNumber: String,
-    val timestamp: String,
-    val coordinates: String?
-)
-
-
-// 保存フォーマット作成
-private object SavedMessageBuilder{
-    fun create(parsedMessageData: ParsedMessage): FormatSaveData {
-        return FormatSaveData(
-            parsedMessageData.message,
-            parsedMessageData.messageType,
-            parsedMessageData.fromPhoneNumber,
-            parsedMessageData.timestamp,
-            parsedMessageData.coordinates
-        )
-    }
-}
 
 class RelayMessage(private val context: Context, private val parsedMessage: ParsedMessage, ){
     private val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
     private val myPhoneNumber = prefs.getString("flutter.my_phone_number", null)
-    private val formatRelayMessage = RelayedMessageBuilder.create(parsedMessage)
-    private val formatSaveMessage = SavedMessageBuilder.create(parsedMessage)
+    private val RelayMessageData = MessageFormatFactor(context).buildRelayMessage(parsedMessage)
+    private val SaveMessageData = MessageFormatFactor(context).buildSaveFormat(parsedMessage)
 
     pricate val isRelayMessage: Boolean = parsedMessage.ttl > 0
 
@@ -102,5 +61,5 @@ class RelayMessage(private val context: Context, private val parsedMessage: Pars
     private fun handleRelay() {
         if (!isRelayMessage) return
         relayMessage(formatRelayMessage)
-    }    
+    }
 }
