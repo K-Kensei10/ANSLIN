@@ -14,6 +14,16 @@ data class FormatSaveData(
     val coordinates: String?
 )
 
+fun FormatSaveData.toList(): List<String?> {
+    return listOf(
+        message,
+        messageType,
+        fromPhoneNumber,
+        timestamp,
+        coordinates
+    )
+}
+
 // message; to_phone_number; message_type; from_phone_number; TTL; coordinates
 class MessageFormatFactor(private val context: Context) {
 

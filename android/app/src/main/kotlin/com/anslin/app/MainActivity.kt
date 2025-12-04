@@ -30,7 +30,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.*
 import com.anslin.app.MessageFormatFactor
-import com.anslin.app.
+import com.anslin.app.toList
 
 val SERVICE_UUID = UUID.fromString(Constants.SERVICE_UUID)
 val READ_CHARACTERISTIC_UUID = UUID.fromString(Constants.READ_CHARACTERISTIC_UUID)
@@ -45,7 +45,6 @@ val RSSI = Constants.RSSI
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "anslin.flutter.dev/contact"
     private lateinit var channel: MethodChannel
-    private lateinit var prefs: SharedPreferences
     private val BLUETOOTH_STATE_CHANNEL = "bluetoothStatus"
     private var bluetoothStateReceiver: BroadcastReceiver? = null
 
@@ -140,10 +139,45 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        //FlutterSQLに再送データを送る
+        fun pushRelayMessage(q: String) {
+            runOnUiThread() {
+                if (::channel.isInitialized) {
+                    // dart側の 'saveRelayMessage' メソッドを呼び出す
+                    channel.invokeMethod("saveRelayMessage", q)
+                } else {
+                    println("MethodChannelが初期化されていません。")
+                }
+            }
+        }
+
+        // FlutterSQLにメッセージを送る
+        fun displayMessageOnFlutter(q: List<String?>) {
+            runOnUiThread() {
+                if (::channel.isInitialized) {
+                    channel.invokeMethod("displayMessage", q)
+                } else {
+                    println("MethodChannelが初期化されていません。")
+                }
+            }
+        }
+
+        // Bluetoothの状態
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, BLUETOOTH_STATE_CHANNEL)
             .setStreamHandler(BluetoothStateStreamHandler(this))
+
+        // メッセージ処理待ちキュー
         MessageBridge.registerActivityHandler { receivedData ->
-            runOnUiThread() { MessageParser.messageParse(receivedData) }
+            runOnUiThread {
+                val parsed = MessageParser.messageParse(receivedData) ?: return@runOnUiThread
+                RelayMessage(
+                    context = this,
+                    parsedMessage = parsed,
+                    displayMessageOnFlutter = ::displayMessageOnFlutter,
+                    pushRelayMessage = ::pushRelayMessage
+                ).routeMessage()
+            }
         }
     }
 }

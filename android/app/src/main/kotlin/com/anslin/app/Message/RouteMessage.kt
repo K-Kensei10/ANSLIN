@@ -7,27 +7,32 @@ import com.anslin.app.MessageFormatFactor
 val isMessenger: Boolean = false
 val isGoverment: Boolean = false
 
-class RelayMessage(private val context: Context, private val parsedMessage: ParsedMessage, ){
+class RelayMessage(
+    private val context: Context,
+    private val parsedMessage: ParsedMessage,
+    private val displayMessageOnFlutter: (List<String?>) -> Unit,
+    private val pushRelayMessage: (String) -> Unit
+){
     private val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
     private val myPhoneNumber = prefs.getString("flutter.my_phone_number", null)
-    private val RelayMessageData = MessageFormatFactor(context).buildRelayMessage(parsedMessage)
-    private val SaveMessageData = MessageFormatFactor(context).buildSaveFormat(parsedMessage)
+    private val relayMessageData = MessageFormatFactor(context).buildRelayMessage(parsedMessage)
+    private val saveMessageData = MessageFormatFactor(context).buildSaveFormat(parsedMessage)
 
-    pricate val isRelayMessage: Boolean = parsedMessage.ttl > 0
+    private val isRelayMessage: Boolean = parsedMessage.ttl > 0
 
     fun routeMessage() {
         // 送信条件分岐
         when (parsedMessage.messageType) {// TODO
 
             "1" -> { // SNS
-                displayMessageOnFlutter(formatSaveMessage)
+                handleDisplay()
                 handleRelay()
             }
 
             "2" -> { // 長距離通信、安否確認
                 // 自分宛
                 if (parsedMessage.toPhoneNumber == myPhoneNumber) {
-                    displayMessageOnFlutter(formatSaveMessage)
+                    handleDisplay()
                     return
                 }
 
@@ -47,7 +52,7 @@ class RelayMessage(private val context: Context, private val parsedMessage: Pars
             }
 
             "4" -> { // 自治体からの連絡
-                displayMessageOnFlutter(formatSaveMessage)
+                handleDisplay()
                 handleRelay()
             }
 
@@ -60,6 +65,10 @@ class RelayMessage(private val context: Context, private val parsedMessage: Pars
 
     private fun handleRelay() {
         if (!isRelayMessage) return
-        relayMessage(formatRelayMessage)
+        pushRelayMessage(relayMessageData)
+    }
+
+    private fun handleDisplay() {
+        displayMessageOnFlutter(saveMessageData.toList())
     }
 }
