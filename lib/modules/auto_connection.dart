@@ -18,6 +18,7 @@ Future<void> autoAdvertise() async {
     {"message": relayMessage},
   );
   if (result != null && result.isNotEmpty) {
+    print("ここのコード編集必要");
     DatabaseHelper.instance.deleteOldestRelayMessage();
   }
 }

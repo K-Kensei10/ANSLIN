@@ -14,7 +14,6 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.*
 import android.content.Context
-import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
@@ -22,15 +21,12 @@ import android.util.Log
 import androidx.annotation.NonNull
 import androidx.core.os.postDelayed
 import android.content.BroadcastReceiver
-import android.content.Intent
-import android.content.IntentFilter
 import io.flutter.plugin.common.EventChannel
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.*
 import com.anslin.app.MessageFormatFactor
-import com.anslin.app.toList
 
 val SERVICE_UUID = UUID.fromString(Constants.SERVICE_UUID)
 val READ_CHARACTERISTIC_UUID = UUID.fromString(Constants.READ_CHARACTERISTIC_UUID)
@@ -48,8 +44,51 @@ class MainActivity : FlutterActivity() {
     private val BLUETOOTH_STATE_CHANNEL = "bluetoothStatus"
     private var bluetoothStateReceiver: BroadcastReceiver? = null
 
+    private lateinit var scanner: BluetoothScanner
+    private lateinit var advertiser: BluetoothAdvertiser
+
+    //FlutterSQLに再送データを送る
+    fun pushRelayMessage(q: String) {
+        runOnUiThread() {
+            if (::channel.isInitialized) {
+                // dart側の 'saveRelayMessage' メソッドを呼び出す
+                channel.invokeMethod("saveRelayMessage", q)
+            } else {
+                println("MethodChannelが初期化されていません。")
+            }
+        }
+    }
+
+    // FlutterSQLにメッセージを送る
+    fun displayMessageOnFlutter(q: List<String?>) {
+        runOnUiThread() {
+            if (::channel.isInitialized) {
+                channel.invokeMethod("displayMessage", q)
+            } else {
+                println("MethodChannelが初期化されていません。")
+            }
+        }
+    }
+
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        scanner = BluetoothScanner(
+            context = this,
+            onMessageFound = { rawMessage ->
+                MessageBridge.onMessageReceived(rawMessage)
+            },
+            onError = { error ->
+                println("Scan error: $error")
+            }
+        )
+
+        advertiser = BluetoothAdvertiser(
+            context = this,
+            onSendResult = { status ->
+                println("Advertise result: $status")
+            }
+        )
 
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
 
@@ -58,108 +97,49 @@ class MainActivity : FlutterActivity() {
                 "startCatchMessage" -> {
                     if (!ISSCANNING) {
                         ISSCANNING = true
-                        val bleController = BluetoothLeController(this)
-                        bleController.ScanAndConnect { resultMap ->
-                            when (resultMap["status"]) {
-                                "RECEIVE_MESSAGE_SUCCESSFUL" -> {
-                                    val messageData = resultMap["data"]
-                                    if (messageData != null) {
-                                        MessageBridge.onMessageReceived(messageData)
-                                    }
-                                    result.success("メッセージ受信＆処理完了")
-                                }
-                                "device_not_found" -> {
-                                    result.error("SCAN_FAILED", resultMap["message"], null)
-                                }
-                                else -> {
-                                    result.error("UNKNOWN_STATUS", "予期せぬエラーが発生しました。", null)
-                                }
+                        scanner.startScan(
+                            onSuccess = {
+                                result.success("メッセージ受信＆処理完了")
+                            },
+                            onError = { code, message ->
+                                result.error(code, message, null)
                             }
-                        }
+                        )
                     }
                 }
                 "startSendMessage" -> {
-                    val messageData = 
-                        MessageFormatFactor(context).buildOriginMessage(
-                            call.argument<String>("message") ?: "",
-                            call.argument<String>("messageType") ?: "",
-                            toPhoneNumber = call.argument<String>("toPhoneNumber") ?: "", 
-                            call.argument<String>("coordinates")
-                        )
-                    Log.d("Advertise", "$messageData")
+                    val messageData = MessageFormatFactor(context).buildOriginMessage(
+                        call.argument<String>("message") ?: "",
+                        call.argument<String>("messageType") ?: "",
+                        call.argument<String>("toPhoneNumber") ?: "",
+                        call.argument<String>("coordinates")
+                    )
                     if (!ISADVERTISING) {
                         ISADVERTISING = true
-                        val bleController = BluetoothLeController(this)
-                        bleController.SendingMessage(messageData) { resultMap ->
-                            when (resultMap["status"]) {
-                                "SEND_MESSAGE_SUCCESSFUL" -> {
-                                    result.success("SEND_MESSAGE_SUCCESSFUL")
-                                }
-                                "ADVERTISE_FAILED" -> {
-                                    result.error("FAILED_ADVERTISING", "送信するデバイスが見つかりませんでした。", null)
-                                }
-                                else -> {
-                                    result.error("UNKNOWN_STATUS", "予期せぬエラーが発生しました", null)
-                                }
-                            }
-                        }
+                        
+                        advertiser.sendMessage(
+                            messageData,
+                            onSuccess = { result.success("SEND_MESSAGE_SUCCESSFUL") },
+                            onError = { code, message -> result.error(code, message, null) }
+                        )
                     } else {
-                        runOnUiThread() {
-                            if (::channel.isInitialized) {
-                                // dart側の 'saveRelayMessage' メソッドを呼び出す
-                                channel.invokeMethod("saveRelayMessage", messageData)
-                                result.success("メッセージを送信キューに追加しました。")
-                            } else {
-                                println("MethodChannelが初期化されていません。")
-                                result.error("UNKNOWN_STATUS", "予期せぬエラーが発生しました", null)
-                            }
-                        }
+                        // キューに追加
+                        channel.invokeMethod("saveRelayMessage", messageData)
+                        result.success("メッセージを送信キューに追加しました。")
                     }
                 }
                 "autoAdvertise" -> {
-                    val messageData: String = call.argument<String>("message") ?: ""
                     if (!ISADVERTISING) {
                         ISADVERTISING = true
-                        val bleController = BluetoothLeController(this)
-                        bleController.SendingMessage(messageData) { resultMap ->
-                            when (resultMap["status"]) {
-                                "SEND_MESSAGE_SUCCESSFUL" -> {
-                                    result.success("メッセージを送信キューに追加しました。")
-                                }
-                                "ADVERTISE_FAILED" -> {
-                                    result.error("FAILED_ADVERTISING", "送信エラーが発生しました。", null)
-                                }
-                                else -> {
-                                    result.error("UNKNOWN_STATUS", "予期せぬエラーが発生しました", null)
-                                }
-                            }
-                        }
+                        val messageData = call.argument<String>("message") ?: ""
+                        advertiser.sendMessage(
+                            messageData,
+                            onSuccess = { result.success("メッセージを送信キューに追加しました。") },
+                            onError = { code, message -> result.error(code, message, null) }
+                        )
                     }
                 }
                 else -> result.notImplemented()
-            }
-        }
-
-        //FlutterSQLに再送データを送る
-        fun pushRelayMessage(q: String) {
-            runOnUiThread() {
-                if (::channel.isInitialized) {
-                    // dart側の 'saveRelayMessage' メソッドを呼び出す
-                    channel.invokeMethod("saveRelayMessage", q)
-                } else {
-                    println("MethodChannelが初期化されていません。")
-                }
-            }
-        }
-
-        // FlutterSQLにメッセージを送る
-        fun displayMessageOnFlutter(q: List<String?>) {
-            runOnUiThread() {
-                if (::channel.isInitialized) {
-                    channel.invokeMethod("displayMessage", q)
-                } else {
-                    println("MethodChannelが初期化されていません。")
-                }
             }
         }
 
