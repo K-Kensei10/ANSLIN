@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:anslin/snack_bar.dart';
+import 'package:anslin/modules/snack_bar.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 

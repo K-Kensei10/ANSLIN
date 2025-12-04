@@ -1,5 +1,5 @@
 name: anslin
-description: "anslin"
+description: "Bluetooth connection app"
 publish_to: "none"
 version: 0.1.0
 
@@ -19,6 +19,8 @@ dependencies:
   path: ^1.8.3
   geolocator: ^12.0.0
   latlong2: ^0.9.1
+  flutter_native_splash: ^2.4.7
+  app_settings: ^6.1.1
 
 dev_dependencies:
   flutter_test:
@@ -37,3 +39,25 @@ flutter_launcher_icons:
   image_path: "assets/img/app_icon.png"
   adaptive_icon_background: "#73e8a8" 
   adaptive_icon_foreground: "assets/img/app_icon.png"
+
+flutter_native_splash:
+
+  color: '#add8e6'
+
+  image: 'assets/img/splash.png'
+
+  color_dark: '#ffffff'
+
+  image_dark: 'assets/img/splash.png'
+
+  fullscreen: true
+
+  android_12:
+
+    icon_background_color: '#ffffff'
+
+    image: 'assets/img/splash.png'
+
+    icon_background_color_dark: '#262626'
+
+    image_dark: 'assets/img/splash.png'

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-//snackbarを表示する関数
 ScaffoldFeatureController<SnackBar, SnackBarClosedReason> showSnackbar(
   BuildContext context,
   String message,

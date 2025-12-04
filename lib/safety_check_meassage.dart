@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:anslin/snack_bar.dart';
+import 'package:anslin/modules/snack_bar.dart';
 import 'package:anslin/main.dart';
 import 'package:anslin/get_gps.dart';
 import 'databasehelper.dart';

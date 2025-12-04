@@ -1,5 +1,5 @@
 import 'package:flutter/services.dart';
-import 'databasehelper.dart';
+import '../databasehelper.dart';
 import 'dart:async';
 
 const methodChannel = MethodChannel('anslin.flutter.dev/contact');
@@ -18,6 +18,7 @@ Future<void> autoAdvertise() async {
     {"message": relayMessage},
   );
   if (result != null && result.isNotEmpty) {
+    print("ここのコード編集必要");
     DatabaseHelper.instance.deleteOldestRelayMessage();
   }
 }
