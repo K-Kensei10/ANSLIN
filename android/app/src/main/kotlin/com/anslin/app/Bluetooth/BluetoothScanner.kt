@@ -28,6 +28,7 @@ class BluetoothScanner (
     private val handler = Handler(Looper.getMainLooper())
 
     private val scanResults = mutableListOf<ScanResult>()
+    private val lastConnectedMap = mutableMapOf<String, Long>()
     private var scanCallback: ScanCallback? = null
 
 
@@ -36,6 +37,9 @@ class BluetoothScanner (
 
     // スキャン
     fun startScan() {
+
+        cleanLastConnectedMap()
+
         if (!PermissionUtils.check(context)) {
             onError("通信に必要な権限がありません")
             return
@@ -96,6 +100,18 @@ class BluetoothScanner (
         }
     }
 
+    private fun cleanLastConnectedMap() {
+        val now = System.currentTimeMillis()
+        val iterator = lastConnectedMap.entries.iterator()
+    
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (now - entry.value >= 30_000) {
+                iterator.remove()
+            }
+        }
+    }
+
     private fun stopScanAndConnect() {
         scanner?.stopScan(scanCallback)
 
@@ -104,8 +120,25 @@ class BluetoothScanner (
             return
         }
 
+        val now = System.currentTimeMillis()
+
+        // デバイスが1台だけならルールを無視して接続
+        if (scanResults.size == 1) {
+            connectToDevice(scanResults[0].device)
+            return
+        }
+
+        // 過去30秒以内に接続したデバイスを除外
+        val filtered = scanResults.filter { result ->
+            val last = lastConnectedMap[result.device.address]
+            last == null || now - last >= 30_000
+        }
+
+        // ルールを無視して接続
+        val targetList = if (filtered.isEmpty()) scanResults else filtered
+    
         // 最も強いデバイスを選ぶ
-        val bestDevice = scanResults.maxByOrNull { it.rssi } ?: run {
+        val bestDevice = targetList.maxByOrNull { it.rssi } ?: run {
             onError("接続可能なデバイスが見つかりませんでした")
             return
         }
@@ -157,6 +190,8 @@ class BluetoothScanner (
         ) {
             val value = characteristic.value ?: return
             val message = String(value, Charsets.UTF_8)
+
+            lastConnectedMap[gatt.device.address] = System.currentTimeMillis()
 
             onSuccess(message)
 
